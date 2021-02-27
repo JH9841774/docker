@@ -1,0 +1,65 @@
+version: "3.7"
+services:
+  #traefik service#
+  traefik:
+    image: proxy
+    container_name: traefik
+    restart: always
+    networks:
+      - web
+    ports:
+      -"80:80"
+      -"443:443"
+      -"4000:4000"
+      -"8080:8080"
+    command:
+      - "--log.level=DEBUG"
+      - "--api.insecure=true" # <== Enabling insecure api, NOT RECOMMENDED FOR PRODUCTION
+      - "--api.dashboard=true" # <== Enabling the dashboard to view services, middlewares, routers, etc...
+      #- --api.debug=true # <== Enabling additional endpoints for debugging and profiling
+      #- --log.level=DEBUG # <== Setting the level of the logs from traefik
+      - "--providers.docker=true" # <== Enabling docker as the provider for traefik
+      - "--providers.docker.exposedbydefault=false" # <== Don't expose every container to traefik, only expose enabled ones
+     # - --providers.file.filename=/dynamic.yaml # <== Referring to a dynamic configuration file
+     # - --providers.docker.network=proxy # <== Operate on the docker network named proxy
+      - "--entrypoints.web.address=:80" # <== Defining an entrypoint for port :80 named web
+      - "--entrypoints.websecured.address=:443" # <== Defining an entrypoint for https on port :443
+      - "--entrypoints.node.address=:4000"
+      - "--certificatesresolvers.myhttpchallenge.acme.httpchallenge=true"
+      - "--certificatesresolvers.myhttpchallenge.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.myhttpchallenge.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory"
+      - "--certificatesresolvers.myhttpchallenge.acme.email=jhorne.x@gmail.com" # <== Set your email
+      - "--certificatesresolvers.myhttpchallenge.acme.storage=/letsencrypt/acme.json"
+      #- --certificatesresolvers.mytlschallenge.acme.tlschallenge=true # <== Enable TLS-ALPN-01
+      #- --certificatesresolvers.mytlschallenge.acme.email=jhorne.x@gmail.com # <== Set your email
+      #- --certificatesresolvers.mytlschallenge.acme.storage=/letsencrypt/acme.json # <== SSL stuff
+    volumes:
+      - ./letsencrypt:/letsencrypt # <== Volume for certs (TLS)
+      - /var/run/docker.sock:/var/run/docker.sock # <== Volume for docker admin
+      - ./dynamic.yaml:/dynamic.yaml # <== Volume for dynamic conf file, **ref: line 27
+
+  ##front-end web##
+  web:
+    image: web
+    container_name: webv1
+    restart: always
+    #depends_on:
+     # - node
+    networks:
+      - web
+    labels:
+      -"traefik.enable=true"
+      -"traefik.http.middlewares.myredirect.redirectscheme.scheme=https"
+      -"traefik.http.routers.web.middlewares=myredirect"
+      -"traefik.http.routers.web.rul=Host('techgnat.com','www.techgnat.com')"
+      -"traefik.http.routers.web.entrypoints=web"
+      -"traefik.http.routers.websecured.rule=Host('techgnat.com','www.techgnat.com')"
+      -"traefik.http.routers.websecured.entrypoints=websecured"
+      -"traefik.http.routers.websecured.certresolver=myhttpchallenge"
+      -"traefik.http.routers.websecured.tls=true"
+    
+    volumes:
+       - ./web/:/usr/share/nginx/html/
+networks:
+   web:
+      external: true        
